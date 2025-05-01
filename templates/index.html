@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>音楽分析アプリ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .loading {
+            display: none;
+            text-align: center;
+            margin: 20px 0;
+        }
+        .result-section {
+            margin-top: 30px;
+            display: none;
+        }
+        .error-message {
+            color: red;
+            margin-top: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="text-center mb-4">音楽分析アプリ</h1>
+        
+        <div class="row justify-content-center">
+            <div class="col-md-8">
+                <div class="card">
+                    <div class="card-body">
+                        <form id="uploadForm" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="audioFile" class="form-label">音声ファイルを選択（WAV, MP3, OGG, FLAC）</label>
+                                <input type="file" class="form-control" id="audioFile" name="file" accept=".wav,.mp3,.ogg,.flac" required>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100">分析開始</button>
+                        </form>
+                        
+                        <div class="loading">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">分析中...</p>
+                        </div>
+                        
+                        <div class="error-message"></div>
+                        
+                        <div class="result-section">
+                            <h3>技術的分析結果</h3>
+                            <pre id="technicalAnalysis" class="bg-light p-3 rounded"></pre>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('uploadForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            const form = e.target;
+            const fileInput = document.getElementById('audioFile');
+            const loading = document.querySelector('.loading');
+            const errorMessage = document.querySelector('.error-message');
+            const resultSection = document.querySelector('.result-section');
+            
+            // 入力チェック
+            if (!fileInput.files[0]) {
+                errorMessage.textContent = 'ファイルを選択してください';
+                errorMessage.style.display = 'block';
+                return;
+            }
+            
+            // 表示のリセット
+            errorMessage.style.display = 'none';
+            resultSection.style.display = 'none';
+            loading.style.display = 'block';
+            
+            const formData = new FormData(form);
+            
+            try {
+                const response = await fetch('/analyze', {
+                    method: 'POST',
+                    body: formData
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    document.getElementById('technicalAnalysis').textContent = data.technical_analysis;
+                    resultSection.style.display = 'block';
+                } else {
+                    errorMessage.textContent = data.error || 'エラーが発生しました';
+                    errorMessage.style.display = 'block';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                errorMessage.textContent = '通信エラーが発生しました。ファイルサイズが大きすぎる可能性があります。';
+                errorMessage.style.display = 'block';
+            } finally {
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html> 
