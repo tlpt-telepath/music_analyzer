@@ -1,5 +1,7 @@
 import os
 import sys
+import webbrowser
+from threading import Timer
 from flask import Flask, request, render_template, jsonify
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
@@ -7,9 +9,21 @@ from audio_analyzer import analyze_audio, format_output
 import librosa
 import soundfile as sf
 import logging
+import traceback
 
 # ロギングの設定
-logging.basicConfig(level=logging.INFO)
+log_dir = os.path.join(os.path.expanduser('~'), 'MusicAnalyzer')
+os.makedirs(log_dir, exist_ok=True)
+log_file = os.path.join(log_dir, 'app.log')
+
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler(log_file),
+        logging.StreamHandler()
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # PyInstallerでバンドルされた場合のパスを取得
@@ -21,38 +35,44 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 # 環境変数の読み込み
-load_dotenv()
+try:
+    load_dotenv()
+except Exception as e:
+    logger.error(f"Error loading .env file: {str(e)}")
 
 app = Flask(__name__, template_folder=resource_path('templates'))
-app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 5 * 1024 * 1024  # 5MB制限
+app.config['UPLOAD_FOLDER'] = os.path.join(os.path.expanduser('~'), 'MusicAnalyzer', 'uploads')
+app.config['MAX_CONTENT_LENGTH'] = 100 * 1024 * 1024  # 100MB制限
 
 # アップロードフォルダの作成
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+try:
+    os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+except Exception as e:
+    logger.error(f"Error creating upload folder: {str(e)}")
 
-def preprocess_audio(input_path, output_path, target_sr=16000, max_duration=180):
+def preprocess_audio(input_path, output_path, target_sr=44100, max_duration=None):
     """
     音声ファイルを前処理する関数
-    - サンプリングレートを16000Hzに変換
-    - 最大長を180秒に制限
-    - モノラルに変換
+    - サンプリングレートを44.1kHzに変換
+    - モノラルに変換（必要な場合のみ）
     """
     try:
         # 音声ファイルの読み込み
         y, sr = librosa.load(input_path, sr=None)
         logger.info(f"Original audio loaded: {len(y)/sr:.1f} seconds, {sr}Hz")
         
-        # 最大長を制限
-        if len(y) > max_duration * sr:
+        # 最大長の制限を解除
+        if max_duration and len(y) > max_duration * sr:
             y = y[:int(max_duration * sr)]
             logger.info(f"Audio truncated to {max_duration} seconds")
         
-        # サンプリングレートの変換とモノラル化
+        # サンプリングレートの変換（44.1kHz）
         y = librosa.resample(y=y, orig_sr=sr, target_sr=target_sr)
-        if len(y.shape) > 1:
-            y = librosa.to_mono(y)
         
-        # ファイルの保存
+        # 出力ファイルの拡張子を.wavに設定
+        output_path = os.path.splitext(output_path)[0] + '.wav'
+        
+        # ファイルの保存（44.1kHz）
         sf.write(output_path, y, target_sr)
         logger.info(f"Processed audio saved: {os.path.getsize(output_path)/1024/1024:.1f}MB")
         return output_path
@@ -77,16 +97,12 @@ def analyze():
         try:
             filename = secure_filename(file.filename)
             filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-            processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_{filename}')
+            processed_filepath = os.path.join(app.config['UPLOAD_FOLDER'], f'processed_{os.path.splitext(filename)[0]}')
             
             # ファイルの保存
             file.save(filepath)
             file_size = os.path.getsize(filepath) / 1024 / 1024  # MB
             logger.info(f"File saved: {filename}, size: {file_size:.1f}MB")
-            
-            if file_size > 5:
-                os.remove(filepath)
-                return jsonify({'error': 'ファイルサイズが大きすぎます。5MB以下のファイルをアップロードしてください。'}), 413
             
             # 音声ファイルの前処理
             processed_filepath = preprocess_audio(filepath, processed_filepath)
@@ -111,10 +127,26 @@ def analyze():
                 os.remove(filepath)
             if os.path.exists(processed_filepath):
                 os.remove(processed_filepath)
-            error_message = str(e)
-            if "413" in error_message:
-                return jsonify({'error': 'ファイルサイズが大きすぎます。5MB以下のファイルをアップロードしてください。'}), 413
-            return jsonify({'error': f'分析中にエラーが発生しました: {error_message}'}), 500
+            return jsonify({'error': f'分析中にエラーが発生しました: {str(e)}'}), 500
+
+def open_browser():
+    """
+    デフォルトのWebブラウザでアプリケーションを開く
+    """
+    try:
+        webbrowser.open('http://127.0.0.1:5001/')
+        logger.info("Browser opened successfully")
+    except Exception as e:
+        logger.error(f"Error opening browser: {str(e)}")
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
+    try:
+        logger.info("Starting application...")
+        # アプリケーション起動後にブラウザを開く
+        Timer(1.5, open_browser).start()
+        # デバッグモードをオフにし、ローカルホストのみでアクセス可能に
+        app.run(host='127.0.0.1', port=5001, debug=False)
+    except Exception as e:
+        logger.error(f"Application error: {str(e)}")
+        logger.error(traceback.format_exc())
+        input("Press Enter to exit...")  # エラー時にウィンドウを保持 

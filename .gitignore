@@ -40,8 +40,12 @@ ENV/
 ehthumbs.db
 Thumbs.db
 
-# Project specific
+# Application specific
 uploads/
+*.log
+.env
+
+# Project specific
 *.wav
 *.mp3
 *.ogg
