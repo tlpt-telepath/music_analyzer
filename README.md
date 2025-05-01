@@ -10,7 +10,7 @@
 
 ## ダウンロード
 
-最新のリリースは[こちら](https://github.com/tlpt-telepath/python_music_analyze/releases/tag/0.0.1)からダウンロードできます。
+最新のリリースは[こちら](https://github.com/tlpt-telepath/music_analyzer/releases/tag/0.0.1)からダウンロードできます。
 
 ## アプリケーションの使用方法
 
